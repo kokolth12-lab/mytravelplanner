@@ -1,0 +1,493 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;700;800;900&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <title>關西冬日夢幻手札 | 2026 雲端同步版</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    
+    <style>
+        :root {
+            --bg-main: #F4FBFF;
+            --magic-blue: #0ea5e9;
+            --magic-pink: #ec4899;
+            --magic-purple: #8b5cf6;
+            --magic-teal: #14b8a6;
+            --magic-yellow: #f59e0b;
+            --dark-border: #1e293b;
+            --pass-theme: #6366f1;
+        }
+
+        body {
+            font-family: 'Lexend', 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #f1f5f9 50%, #fce7f3 100%);
+            min-height: 100vh;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+
+        /* --- 3D 質感通用樣式 --- */
+        .btn-style {
+            border: 2px solid var(--dark-border);
+            border-bottom-width: 5px;
+            transition: all 0.1s ease;
+            border-radius: 50px;
+        }
+        .btn-style:active {
+            transform: translateY(2px);
+            border-bottom-width: 2px;
+        }
+        .card-shape { border-radius: 24px; }
+
+        /* --- 載入動畫 --- */
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999; opacity: 1; visibility: visible;
+            transition: opacity 1s ease-out, visibility 1s ease-out;
+        }
+        .loading-plane { font-size: 3rem; color: #3f51b5; animation: flyAcross 2s ease-in-out forwards; }
+        @keyframes flyAcross {
+            0% { transform: translateX(-110vw) translateY(20px) rotate(10deg); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(110vw) translateY(-20px) rotate(10deg); opacity: 0; }
+        }
+
+        #main-app-container {
+            opacity: 0; visibility: hidden; transition: opacity 0.8s ease-in;
+            max-width: 1000px; margin: 0 auto; padding: 0 15px;
+        }
+
+        /* --- 排版框架 --- */
+        .app-grid { display: grid; grid-template-columns: 1fr; gap: 15px; align-items: start; padding-top: 10px; }
+        @media (min-width: 1024px) { .app-grid { grid-template-columns: 320px 1fr; gap: 25px; } }
+
+        .card-main { position: sticky; top: 15px; padding: 20px; border: 2px solid var(--dark-border); border-bottom-width: 6px; border-top: 8px solid var(--pass-theme); border-radius: 24px; background: white; }
+        .pass-tag { background: #eef2ff; color: #4338ca; padding: 3px 12px; border-radius: 50px; font-size: 0.6rem; font-weight: 900; letter-spacing: 0.5px; border: 2px solid var(--dark-border); margin-bottom: 12px; display: inline-block; }
+        
+        .info-item { background: #f8fafc; padding: 10px 14px; border-radius: 15px; margin-bottom: 8px; cursor: pointer; border: 2px solid var(--dark-border); border-bottom-width: 4px; transition: 0.2s; }
+        .label { font-size: 0.5rem; font-weight: 800; color: #94a3b8; display: block; }
+        .value { font-size: 0.85rem; font-weight: 900; color: #1e293b; outline: none; }
+
+        /* --- 磁貼矩陣 --- */
+        .teaser-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .card-teaser {
+            background: white; border-radius: 26px; padding: 15px 10px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; border: 2.5px solid var(--dark-border); border-bottom-width: 6px;
+            transition: 0.2s; min-height: 105px;
+        }
+        .teaser-itinerary { background: linear-gradient(135deg, #fff5f7, #fce4ec); border-top: 3px solid #ec4899; }
+        .teaser-money { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-top: 3px solid #14b8a6; }
+        .teaser-prep { background: linear-gradient(135deg, #fffbeb, #fef3c7); border-top: 3px solid #f59e0b; }
+        .teaser-shopping { background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border-top: 3px solid #0ea5e9; }
+        .teaser-mood { background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-top: 3px solid #8b5cf6; }
+        .teaser-ref { background: linear-gradient(135deg, #f0fdfa, #ccfbf1); border-top: 3px solid #14b8a6; }
+
+        /* --- 彈窗系統 --- */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.3); backdrop-filter: blur(12px);
+            z-index: 3000; justify-content: center; align-items: center;
+        }
+        .modal-content-base {
+            width: 95vw; height: 92vh; background: #fff; border-radius: 40px;
+            border: 4px solid var(--dark-border); display: flex; flex-direction: column;
+            overflow: hidden; animation: popIn 0.3s ease-out;
+        }
+        .modal-header-generic { padding: 18px 30px; border-bottom: 4px solid var(--dark-border); display: flex; justify-content: space-between; align-items: center; }
+
+        /* --- 拍立得 & 行程 --- */
+        .polaroid-frame {
+            background: white; padding: 10px 10px 25px 10px; border: 1.5px solid #eee;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05); transform: rotate(-1deg);
+        }
+        .polaroid-img { width: 100%; height: 160px; object-fit: cover; border-radius: 2px; }
+        .day-tab { padding: 10px; min-width: 70px; text-align: center; cursor: pointer; border-radius: 15px; border: 2px solid var(--dark-border); font-weight: 900; background: white; }
+        .day-tab.active { background: var(--magic-pink); color: white; }
+        .activity-sticker { background: #fff; border: 3px solid var(--dark-border); border-bottom-width: 8px; border-radius: 24px; padding: 15px; margin-bottom: 20px; position: relative; }
+
+        /* --- 航班票券 --- */
+        .pink-vintage-ticket { background: #fffafa; width: 95%; max-width: 600px; border: 3px solid var(--dark-border); border-radius: 15px; overflow: hidden; font-family: monospace; }
+        .ticket-perforation .line { border-left: 2px dashed #ec4899; height: 100%; }
+        
+        @keyframes popIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen"><div class="loading-plane">✈️</div><div class="mt-4 font-black text-slate-400 text-[10px] tracking-[0.4em] uppercase">Syncing with Cloud...</div></div>
+
+    <div id="main-app-container">
+        <header class="text-center py-8">
+            <h1 class="text-3xl font-black text-slate-700 italic uppercase">✨ Cloud Journey 2026 ✨</h1>
+            <p id="sync-status" class="text-green-500 font-bold text-[8px] mt-1 tracking-widest uppercase">● 雲端連線中</p>
+        </header>
+
+        <div class="app-grid">
+            <aside>
+                <div class="card-main">
+                    <span class="pass-tag">LIVE SYNC PASS</span>
+                    <h2 contenteditable="true" class="text-lg font-black text-slate-800 mb-4 outline-none" id="main-trip-title">載入中...</h2>
+                    <div class="space-y-2">
+                        <div class="info-item">
+                            <span class="label">📅 DATES</span>
+                            <div class="value" contenteditable="true" id="main-trip-date">...</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="info-item" onclick="window.openModal('flight-modal')">
+                                <span class="label">✈️ FLIGHT</span>
+                                <div class="value text-[0.65rem]" id="main-flight-summary">---</div>
+                            </div>
+                            <div class="info-item" onclick="window.openModal('hotel-modal')">
+                                <span class="label">🏨 HOTELS</span>
+                                <div class="value text-[0.65rem]" id="main-hotel-summary">0 間</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn-style w-full mt-5 py-3 text-[9px] font-black bg-indigo-500 text-white" onclick="window.pushSummary()">💾 儲存並同步到雲端</button>
+                </div>
+            </aside>
+
+            <section class="teaser-grid">
+                <div class="card-teaser teaser-itinerary btn-style" onclick="window.openModal('itinerary-modal')">
+                    <div class="teaser-icon">🗓️</div><div class="teaser-title">行程詳細</div>
+                </div>
+                <div class="card-teaser teaser-money btn-style" onclick="window.openModal('money-modal')">
+                    <div class="teaser-icon">💰</div><div class="teaser-title">旅費統計</div>
+                </div>
+                <div class="card-teaser teaser-prep btn-style" onclick="window.openModal('prep-modal')">
+                    <div class="teaser-icon">🎒</div><div class="teaser-title">行前準備</div>
+                </div>
+                <div class="card-teaser teaser-shopping btn-style" onclick="window.openModal('shopping-modal')">
+                    <div class="teaser-icon">🛍️</div><div class="teaser-title">購物願望</div>
+                </div>
+                <div class="card-teaser teaser-mood btn-style" onclick="window.openModal('mood-modal')">
+                    <div class="teaser-icon">💖</div><div class="teaser-title">心情隨筆</div>
+                </div>
+                <div class="card-teaser teaser-ref btn-style" onclick="window.openModal('reference-modal')">
+                    <div class="teaser-icon">📚</div><div class="teaser-title">參考資料</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div id="modal-container" class="modal-overlay" onclick="if(event.target===this) window.closeModal()">
+        
+        <div id="itinerary-modal" class="hidden modal-content-base">
+            <div class="modal-header-generic" style="background:#fffde7">
+                <h2 class="text-xl font-black">📜 雲端共同行程</h2>
+                <button class="btn-style bg-white px-4 py-1 text-xs font-black" onclick="window.pushItinerary()">💾 全面同步</button>
+            </div>
+            <div class="p-4 flex gap-2 overflow-x-auto no-scrollbar" id="day-tabs-container"></div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <div id="timeline-blocks-list" class="max-w-2xl mx-auto"></div>
+                <button class="fixed bottom-10 right-10 w-14 h-14 bg-yellow-300 rounded-full btn-style text-2xl" onclick="window.addNewBlock()">＋</button>
+            </div>
+        </div>
+
+        <div id="mood-modal" class="hidden modal-content-base">
+            <div class="modal-header-generic" style="background:var(--magic-purple); color:white">
+                <h2 class="text-xl font-black">📸 共同回憶牆</h2>
+                <button class="btn-style bg-white text-black px-4" onclick="window.closeModal()">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <div class="bg-slate-50 p-6 rounded-3xl border-2 border-slate-800 mb-8 max-w-xl mx-auto">
+                    <textarea id="mood-input-text" class="w-full h-20 bg-white border-2 border-slate-800 rounded-xl p-3 mb-3 outline-none font-bold" placeholder="分享當下的心情..."></textarea>
+                    <div class="flex justify-between items-center">
+                        <button class="btn-style bg-white px-4 py-2 text-xs font-black" onclick="document.getElementById('mood-file').click()">📷 傳照片</button>
+                        <input type="file" id="mood-file" hidden accept="image/*" onchange="window.handleMoodImg(this)">
+                        <button class="btn-style bg-purple-500 text-white px-8 py-2 font-black" onclick="window.pushMood()">發佈 ✨</button>
+                    </div>
+                </div>
+                <div id="mood-wall" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+            </div>
+        </div>
+
+        <div id="flight-modal" class="hidden pink-vintage-ticket m-auto">
+            <div class="p-4 bg-pink-100 border-b-2 border-slate-800 font-black text-center">✈️ FLIGHT CLOUD SYNC</div>
+            <div class="p-8 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-[9px] font-black opacity-40">DEPARTURE NO.</label><div id="f-out-no" contenteditable="true" class="text-xl font-black border-b border-pink-300 outline-none">BR198</div></div>
+                    <div><label class="text-[9px] font-black opacity-40">RETURN NO.</label><div id="f-in-no" contenteditable="true" class="text-xl font-black border-b border-indigo-300 outline-none">BR197</div></div>
+                </div>
+                <button class="btn-style w-full py-3 bg-slate-800 text-white font-black" onclick="window.pushFlights()">同步航班資訊</button>
+            </div>
+        </div>
+
+        <div id="hotel-modal" class="hidden modal-content-base p-8 overflow-y-auto">
+            <h2 class="text-2xl font-black text-center mb-6">🏨 雲端住宿清單</h2>
+            <div id="hotel-list-container" class="space-y-6 max-w-2xl mx-auto"></div>
+            <div class="flex gap-4 justify-center mt-8">
+                <button class="btn-style bg-yellow-300 px-6 py-2 font-black" onclick="window.addNewHotelUI()">＋ 新增飯店</button>
+                <button class="btn-style bg-indigo-500 text-white px-6 py-2 font-black" onclick="window.pushHotels()">💾 儲存並同步</button>
+            </div>
+        </div>
+        
+    </div>
+
+    <div id="shop-preview-overlay" class="fixed inset-0 bg-black/90 z-[5000] hidden items-center justify-center p-10" onclick="this.style.display='none'"><img id="shop-preview-img" class="max-w-full max-h-full rounded-lg" src=""></div>
+
+    <script>
+        // ==========================================
+        // 1. FIREBASE 初始化 (請在此處填寫你的配置)
+        // ==========================================
+        const firebaseConfig = {const firebaseConfig = {
+  apiKey: "AIzaSyBrNK7eLzPTMOBz63e92_twOJ_gfF5R47w",
+  authDomain: "travel-8d4e1.firebaseapp.com",
+  projectId: "travel-8d4e1",
+  storageBucket: "travel-8d4e1.firebasestorage.app",
+  messagingSenderId: "403123362348",
+  appId: "1:403123362348:web:1fe6e75d349e3214f18f89",
+  measurementId: "G-8DH09LJY3P"
+};
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const TRIP_ID = "kansai_2026_shared"; // 這是雲端資料夾名稱，可隨意更改
+        const ROOT = db.ref(TRIP_ID);
+
+        // ==========================================
+        // 2. 全域狀態
+        // ==========================================
+        let itineraryData = {};
+        let currentDay = 1;
+        let pendingMoodImg = "";
+        const ACT_COLORS = { '🏰': '#e1f5fe', '🍱': '#fff9c4', '🛍️': '#fce4ec', '🚋': '#f1f8e9', '☕': '#f3e5f5', '🏨': '#e8eaf6' };
+
+        // ==========================================
+        // 3. 雲端監聽 (Real-time Sync)
+        // ==========================================
+        ROOT.on('value', (snap) => {
+            const data = snap.val();
+            if(!data) return;
+
+            // 同步封面
+            if(data.summary) {
+                document.getElementById('main-trip-title').innerText = data.summary.title || "點擊編輯標題";
+                document.getElementById('main-trip-date').innerText = data.summary.date || "2026/01/01";
+            }
+
+            // 同步航班
+            if(data.flights) {
+                document.getElementById('f-out-no').innerText = data.flights.outNo;
+                document.getElementById('f-in-no').innerText = data.flights.inNo;
+                document.getElementById('main-flight-summary').innerText = `${data.flights.outNo} / ${data.flights.inNo}`;
+            }
+
+            // 同步住宿
+            if(data.hotels) {
+                const container = document.getElementById('hotel-list-container');
+                if(document.getElementById('hotel-modal').style.display === 'none') {
+                    container.innerHTML = "";
+                    data.hotels.forEach(h => window.addNewHotelUI(h));
+                }
+                document.getElementById('main-hotel-summary').innerText = `安排 ${data.hotels.length} 間`;
+            }
+
+            // 同步行程
+            if(data.itinerary) {
+                itineraryData = data.itinerary;
+                if(document.getElementById('itinerary-modal').style.display !== 'none') {
+                    window.renderCurrentTimeline();
+                }
+            }
+
+            // 同步心情
+            if(data.moods) {
+                renderMoodWall(data.moods);
+            }
+
+            document.getElementById('sync-status').innerText = "● 雲端已同步";
+        });
+
+        // ==========================================
+        // 4. 同步功能函式 (Push to Cloud)
+        // ==========================================
+        window.pushSummary = () => {
+            ROOT.child("summary").set({
+                title: document.getElementById('main-trip-title').innerText,
+                date: document.getElementById('main-trip-date').innerText
+            });
+            alert("封面資料已推送到雲端！");
+        };
+
+        window.pushFlights = () => {
+            ROOT.child("flights").set({
+                outNo: document.getElementById('f-out-no').innerText,
+                inNo: document.getElementById('f-in-no').innerText
+            });
+            window.closeModal();
+        };
+
+        window.pushHotels = () => {
+            const list = [];
+            document.querySelectorAll('.hotel-entry').forEach(e => {
+                list.push({
+                    days: e.querySelector('.day-badge').innerText,
+                    name: e.querySelector('.hotel-name-val').innerText,
+                    address: e.querySelector('.hotel-addr-val').innerText,
+                    trans: e.querySelector('.hotel-trans-val').innerText,
+                    img: e.querySelector('img').src
+                });
+            });
+            ROOT.child("hotels").set(list);
+            alert("住宿資訊已同步！");
+        };
+
+        window.pushItinerary = () => {
+            window.saveDayToMemory(currentDay);
+            ROOT.child("itinerary").set(itineraryData);
+            alert("全體行程已更新至雲端！");
+        };
+
+        window.pushMood = () => {
+            const text = document.getElementById('mood-input-text').value;
+            if(!text && !pendingMoodImg) return;
+            ROOT.child("moods").push({
+                text,
+                img: pendingMoodImg,
+                date: new Date().toLocaleDateString(),
+                timestamp: Date.now()
+            });
+            document.getElementById('mood-input-text').value = "";
+            pendingMoodImg = "";
+        };
+
+        // ==========================================
+        // 5. UI 輔助函式 (保持原有體驗)
+        // ==========================================
+        window.openModal = (id) => {
+            document.getElementById('modal-container').style.display = 'flex';
+            document.querySelectorAll('#modal-container > div').forEach(d => d.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+            if(id === 'itinerary-modal') { window.initDayTabs(); window.renderCurrentTimeline(); }
+        };
+
+        window.closeModal = () => document.getElementById('modal-container').style.display = 'none';
+
+        window.initDayTabs = () => {
+            const c = document.getElementById('day-tabs-container');
+            c.innerHTML = "";
+            for(let i=1; i<=7; i++) {
+                const t = document.createElement('div');
+                t.className = `day-tab ${i===currentDay ? 'active' : ''}`;
+                t.innerText = `Day ${i}`;
+                t.onclick = () => { window.saveDayToMemory(currentDay); currentDay = i; window.initDayTabs(); window.renderCurrentTimeline(); };
+                c.appendChild(t);
+            }
+        };
+
+        window.renderCurrentTimeline = () => {
+            const list = document.getElementById('timeline-blocks-list');
+            list.innerHTML = "";
+            const blocks = itineraryData[currentDay] || [];
+            blocks.forEach(b => renderBlockUI(b));
+        };
+
+        function renderBlockUI(b) {
+            const list = document.getElementById('timeline-blocks-list');
+            const div = document.createElement('div');
+            div.className = "activity-sticker";
+            div.style.background = ACT_COLORS[b.cat] || '#fff';
+            div.dataset.cat = b.cat;
+            div.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-xl btn-style">${b.cat}</div>
+                    <input type="text" class="act-time-input bg-slate-800 text-white rounded-full px-3 text-xs w-20" value="${b.time}">
+                    <div class="act-name-input font-black flex-1 outline-none" contenteditable="true">${b.name}</div>
+                    <button onclick="this.closest('.activity-sticker').remove()" class="text-slate-300">✕</button>
+                </div>
+                <div class="act-content-input outline-none mt-2 text-xs italic" contenteditable="true">${b.content}</div>
+            `;
+            list.appendChild(div);
+        }
+
+        window.saveDayToMemory = (day) => {
+            const blks = [];
+            document.querySelectorAll('.activity-sticker').forEach(el => {
+                blks.push({
+                    cat: el.dataset.cat,
+                    time: el.querySelector('.act-time-input').value,
+                    name: el.querySelector('.act-name-input').innerText,
+                    content: el.querySelector('.act-content-input').innerText
+                });
+            });
+            itineraryData[day] = blks;
+        };
+
+        window.addNewBlock = () => renderBlockUI({cat: '🏰', time: '09:00', name: '新地點', content: '介紹...'});
+
+        window.addNewHotelUI = (d = {days:'日期', name:'飯店', address:'地址', trans:'交通', img:''}) => {
+            const container = document.getElementById('hotel-list-container');
+            const div = document.createElement('div');
+            div.className = "hotel-entry p-4 bg-white border-2 border-slate-800 rounded-3xl grid grid-cols-2 gap-4 relative";
+            div.innerHTML = `
+                <div>
+                    <div class="day-badge bg-yellow-300 px-2 py-1 rounded-lg font-black text-[10px] inline-block mb-2" contenteditable="true">${d.days}</div>
+                    <div class="hotel-name-val font-black text-sm" contenteditable="true">${d.name}</div>
+                    <div class="hotel-addr-val text-[10px] text-slate-400" contenteditable="true">${d.address}</div>
+                    <div class="hotel-trans-val text-[10px] mt-2 bg-slate-50 p-2 rounded" contenteditable="true">${d.trans}</div>
+                </div>
+                <div class="h-32 bg-slate-100 rounded-xl overflow-hidden border-2 border-slate-800" onclick="this.querySelector('input').click()">
+                    <img src="${d.img || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+                    <input type="file" hidden onchange="const r=new FileReader();r.onload=ev=>this.previousElementSibling.src=ev.target.result;r.readAsDataURL(this.files[0]);">
+                </div>
+                <button onclick="this.parentElement.remove()" class="absolute -top-2 -right-2 bg-white border-2 border-slate-800 w-6 h-6 rounded-full text-xs">✕</button>
+            `;
+            container.appendChild(div);
+        };
+
+        function renderMoodWall(moodsObj) {
+            const wall = document.getElementById('mood-wall');
+            wall.innerHTML = "";
+            const moods = Object.entries(moodsObj).reverse();
+            moods.forEach(([key, e]) => {
+                const div = document.createElement('div');
+                div.className = "polaroid-frame bg-white relative";
+                div.innerHTML = `
+                    <button class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full text-xs" onclick="window.deleteMood('${key}')">✕</button>
+                    ${e.img ? `<img src="${e.img}" class="polaroid-img" onclick="window.zoomShopImg('${e.img}')">` : '<div class="h-40 bg-slate-100"></div>'}
+                    <div class="mt-2 text-center font-black text-[10px]">${e.date}</div>
+                    <div class="px-2 mt-1 text-[10px] font-bold text-slate-500">${e.text}</div>
+                `;
+                wall.appendChild(div);
+            });
+        }
+
+        window.deleteMood = (key) => ROOT.child("moods").child(key).remove();
+        window.handleMoodImg = (i) => { if(i.files[0]) { const r = new FileReader(); r.onload=ev=>pendingMoodImg=ev.target.result; r.readAsDataURL(i.files[0]); } };
+        window.zoomShopImg = (s) => { document.getElementById('shop-preview-img').src = s; document.getElementById('shop-preview-overlay').style.display = 'flex'; };
+
+        // 啟動動畫
+        window.onload = () => {
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading-screen').style.visibility = 'hidden', 1000);
+                document.getElementById('main-app-container').style.opacity = '1';
+                document.getElementById('main-app-container').style.visibility = 'visible';
+            }, 1200);
+        };
+    </script>
+</body>
+</html>
